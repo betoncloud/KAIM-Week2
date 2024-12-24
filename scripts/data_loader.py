@@ -110,8 +110,9 @@ def top_5_handsets_for_top_3_manufacturers():
         tm.total_devices,
         ROW_NUMBER() OVER (PARTITION BY h."Handset Manufacturer" ORDER BY tm.total_devices DESC) AS rank
         FROM xdr_data h
-        where "Handset Type" is not null
+        
         INNER JOIN TopManufacturers tm ON h."Handset Manufacturer" = tm."Handset Manufacturer"
+		where "Handset Type" is not null
         )
         SELECT 
         "Handset Manufacturer",

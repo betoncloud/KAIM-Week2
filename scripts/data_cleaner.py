@@ -1,5 +1,12 @@
 import numpy as np
 import os
+from decimal import  Decimal
+from dotenv import load_dotenv
+import psycopg2
+
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Fetch database connection parameters from environment variables
 DB_HOST = os.getenv("DB_HOST")
@@ -7,6 +14,7 @@ DB_PORT = os.getenv("DB_PORT")
 DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
+
 
 
 def clean_missing_data(data, option,column):
@@ -36,15 +44,13 @@ def clean_missing_data(data, option,column):
 
 def clean_outlier(data, option,column):
 
-    try:
-        Q1 = column.quantile(0.25)
-        Q3 = column.quantile(0.75)
-        IQR = Q3 - Q1
-        lower_bound = Q1 - 1.5 * IQR
-        upper_bound = Q3 + 1.5 * IQR
+    try:      
+        column_mean=data[column].mean()
+        std_dev = data[column].std()
+        upper_bound = column_mean + 3 * std_dev
+        lower_bound = column_mean - 3 * std_dev
 
-        if option =='replace_with_mean' and column!='':
-            column_mean=column.mean()
+        if option =='replace_with_mean' and column!='':            
             data[column] = data[column].apply(lambda x: column_mean if x < lower_bound or x > upper_bound else x)
 
         elif option=='replace_with_min':
@@ -58,41 +64,7 @@ def clean_outlier(data, option,column):
         return None
 
 
-def calculate_dispersion(column):
-    try:
-        # 1. Range
-        data_range = column.max() - column.min()
-
-        # 2. Variance
-        data_variance = column.var()
-
-        # 3. Standard Deviation
-        data_std_dev = column.std()
-
-        # 4. Interquartile Range (IQR)
-        Q1 = column.quantile(0.25)
-        Q3 = column.quantile(0.75)
-        data_iqr = Q3 - Q1
-
-        # 5. Coefficient of Variation (CV)
-        mean = column.mean()
-        data_cv = data_std_dev / mean
-        # Return results as a dictionary
-        return {
-            "Data Range": data_range,
-            "Data Variance": data_variance,
-            "Data STD DEV": data_std_dev,
-            "Data IQR": data_iqr,
-            "Data CV": data_cv,
-        }
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return None
-
-
-
-
-def update_database(data_clean,):
+def update_database(data_clean):
     try:
         conn = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
@@ -110,3 +82,35 @@ def update_database(data_clean,):
         return None
 
 
+def insert_scores(data):
+    # Load environment variables from .env file
+    load_dotenv()
+
+
+    connection = psycopg2.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+    )
+   
+    cursor = connection.cursor()
+    insert_query = """
+        INSERT INTO user_scores (user_id, engagement_score, experience_score, satisfaction_score)
+        VALUES (%s, %s, %s, %s)
+        """
+
+    data = data.astype({
+            "MSISDN/Number": "string",
+            "Engagement_Score": "string",
+            "Experience_Score": "string",
+            "Satisfaction_Score": "string"
+    })
+
+    for index, row in data.iterrows():
+        cursor.execute(insert_query, ( row['MSISDN/Number'], row['Engagement_Score'],  row['Experience_Score'],  row['Satisfaction_Score']    ))
+
+    connection.commit()
+    cursor.close()
+    connection.close()
